@@ -10,7 +10,6 @@ Dockerized validation suite for Furiosa RNGD-based servers. Runs three test suit
 - Furiosa NPUs physically installed and visible to the OS
 - A [Hugging Face access token](https://huggingface.co/settings/tokens) with access to the following models:
   - [`meta-llama/Llama-3.1-8B-Instruct`](https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct)
-  - [`Qwen/Qwen2.5-0.5B-Instruct`](https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct)
 
 > If you haven't accepted the terms of use for these models, visit each model page on Hugging Face and agree before proceeding.
 
@@ -99,20 +98,4 @@ docker run ... -e RUN_TESTS=diag,stress furiosa-validation-tool-online:[version]
     ├── run_diag.sh           # Runs hardware diagnostics
     ├── run_p2p.sh            # Runs P2P bandwidth benchmarks
     └── run_stress.sh         # Runs LLM serving stress tests
-```
-
----
-
-## Customization
-
-**Changing the home directory**
-
-The default home directory inside the container is `/root`. If you need to change it, update these two lines in the `Dockerfile`:
-
-```dockerfile
-# Line 11
-ENV HOME=/root
-
-# Line 48
-ENTRYPOINT ["/root/furiosa-server-validation-tool/entrypoint.sh"]
 ```
