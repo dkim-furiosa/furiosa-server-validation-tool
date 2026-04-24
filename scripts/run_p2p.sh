@@ -6,6 +6,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib/common.sh"
 # shellcheck source=lib/html.sh
 source "$SCRIPT_DIR/lib/html.sh"
+# shellcheck source=config.env
+source "$SCRIPT_DIR/config.env"
 
 OUTPUT_P2P=${OUTPUT_P2P:-$OUTPUT_DIR/p2p_$TIMESTAMP}
 mkdir -p "$OUTPUT_P2P"
@@ -69,7 +71,7 @@ run_p2p_benchmark() {
             furiosa-hal-bench p2p \
                 --npu "$i" \
                 --dst-npu "$j" \
-                --buffer-size 16MiB \
+                --buffer-size "$P2P_BUFFER_SIZE" \
                 2>&1 | tee "$STEP_LOG"
 
             cat "$STEP_LOG" >> "$LOG_FILE"
