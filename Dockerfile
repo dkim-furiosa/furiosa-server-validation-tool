@@ -4,10 +4,6 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV FURIOSA_SKIP_PERT_DEPLOY=1
 ENV RUN_TESTS=diag,p2p,stress
 
-ARG HF_TOKEN
-RUN if [ -z "$HF_TOKEN" ]; then echo "ERROR: HF_TOKEN must be set before building the image."; exit 1; fi
-ENV HF_TOKEN=$HF_TOKEN
-
 ENV HOME=/root
 ENV VALIDATION_DIR=$HOME/furiosa-server-validation-tool
 WORKDIR $VALIDATION_DIR
