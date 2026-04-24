@@ -20,45 +20,6 @@ if [ ! -f "ShareGPT_V3_unfiltered_cleaned_split.json" ]; then
   wget https://huggingface.co/datasets/anon8231489123/ShareGPT_Vicuna_unfiltered/resolve/main/ShareGPT_V3_unfiltered_cleaned_split.json
 fi
 
-cat <<EOF > temp_sensor_monitor.py
-import os, time, csv, sys
-from datetime import datetime
-
-def monitor():
-    base_path = "/sys/kernel/debug/rngd/mgmt"
-    sensor_file = "/sensor_readings"
-    valid_npus = [i for i in range(8) if os.path.exists(f"{base_path}{i}{sensor_file}")]
-    if not valid_npus: sys.exit(1)
-
-    log_file = os.path.join("$OUTPUT_STRESS", f"sensor_log_$TIMESTAMP.csv")
-    with open(log_file, "w", newline="") as f:
-        writer = csv.writer(f)
-        header = ["timestamp"]
-        for n in valid_npus:
-            header += [f"npu{n}_soc_temp", f"npu{n}_hbm0_temp", f"npu{n}_hbm1_temp", f"npu{n}_power"]
-        writer.writerow(header)
-
-        while True:
-            row = [datetime.now().strftime("%Y-%m-%d %H:%M:%S")]
-            for n in valid_npus:
-                try:
-                    with open(f"{base_path}{n}{sensor_file}", "r") as sp:
-                        data = sp.read().strip().replace(",", " ").split()
-                        if len(data) >= 5:
-                            # data[1]: SoC, data[2]: HBM0, data[3]: HBM1, data[4]: Power
-                            row += [data[1], data[2], data[3], data[4]]
-                        else:
-                            row += ["", "", "", ""]
-                except:
-                    row += ["", "", "", ""]
-            writer.writerow(row)
-            f.flush()
-            time.sleep(1)
-
-if __name__ == "__main__":
-    monitor()
-EOF
-
 declare -a SUMMARY_DATA=()
 
 NPU_COUNT=$(detect_npu_count)
@@ -201,11 +162,10 @@ cleanup() {
         kill "$MONITOR_PID" 2>/dev/null || true
         wait "$MONITOR_PID" 2>/dev/null || true
     fi
-    rm -f temp_sensor_monitor.py
 }
 trap cleanup EXIT INT TERM
 
-python3 temp_sensor_monitor.py &
+python3 "$SCRIPT_DIR/lib/sensor_monitor.py" --output "$OUTPUT_STRESS" --timestamp "$TIMESTAMP" &
 MONITOR_PID=$!
 echo -e "${CYAN}NPU Sensor Monitoring started (PID: $MONITOR_PID)${NC}"
 
