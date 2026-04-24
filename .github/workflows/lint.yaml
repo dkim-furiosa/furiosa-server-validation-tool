@@ -81,5 +81,5 @@ jobs:
         with:
           python-version: '3.10'
       - name: Install lint tools
-        run: pip install yamllint
+        run: pip install google-yamlfmt yamllint
       - run: make lint-yaml

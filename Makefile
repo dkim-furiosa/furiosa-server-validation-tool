@@ -62,6 +62,7 @@ lint-docker:
 # Lint YAML files.
 .PHONY: lint-yaml
 lint-yaml:
+	yamlfmt -lint .github/
 	yamllint --strict .github/
 
 # Run the test suite.
