@@ -61,28 +61,29 @@ Results are saved under `./outputs/` and `./logs/` (or the paths set by `OUTPUT_
 ### Build
 
 ```bash
-export HF_TOKEN=your_huggingface_token
-
-docker build --progress=plain --build-arg HF_TOKEN=$HF_TOKEN -t furiosa-validation-tool-online:[version] .
+docker build --progress=plain -t furiosa-validation-tool-online:[version] .
 ```
 
 ### Run
 
 ```bash
+export HF_TOKEN=your_huggingface_token
+
 # Run all tests
 docker run --rm -it --privileged \
   -v /sys/kernel/debug:/sys/kernel/debug \
   -v /lib/modules:/lib/modules:ro \
   -v $(pwd)/outputs:/root/outputs \
   -v $(pwd)/logs:/root/logs \
+  -e HF_TOKEN=$HF_TOKEN \
   -e RUN_TESTS=diag,p2p,stress \
   furiosa-validation-tool-online:[version]
 
 # Stress only
-docker run ... -e RUN_TESTS=stress furiosa-validation-tool-online:[version]
+docker run ... -e HF_TOKEN=$HF_TOKEN -e RUN_TESTS=stress furiosa-validation-tool-online:[version]
 
 # Diagnostics + stress (skip P2P)
-docker run ... -e RUN_TESTS=diag,stress furiosa-validation-tool-online:[version]
+docker run ... -e HF_TOKEN=$HF_TOKEN -e RUN_TESTS=diag,stress furiosa-validation-tool-online:[version]
 ```
 
 Results are saved under `./outputs/` and `./logs/` on the host.
