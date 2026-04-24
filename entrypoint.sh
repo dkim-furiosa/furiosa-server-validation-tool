@@ -6,6 +6,11 @@ echo " Furiosa Validation Tool Started (Online Mode)"
 echo "=============================================="
 
 export HOME=${HOME:-/root}
+if [ -z "$HF_TOKEN" ]; then
+    echo "ERROR: HF_TOKEN is not set. Please set HF_TOKEN before running this script."
+    exit 1
+fi
+export HF_TOKEN=$HF_TOKEN
 export VALIDATION_DIR=${VALIDATION_DIR:-$HOME/furiosa-server-validation-tool}
 export OUTPUT_DIR=${OUTPUT_DIR:-$HOME/outputs}
 export LOG_DIR=${LOG_DIR:-$HOME/logs}

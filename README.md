@@ -1,39 +1,22 @@
 # Furiosa Appliance Server Validation Tool
 
-Dockerized validation suite for Furiosa RNGD-based servers. Runs three test suites — hardware diagnostics, P2P bandwidth benchmarks, and LLM stress tests — and produces structured logs and HTML reports.
+Validation suite for Furiosa RNGD-based servers. Runs three test suites — hardware diagnostics, P2P bandwidth benchmarks, and LLM stress tests — and produces structured logs and HTML reports. Can be run directly on a configured host or via Docker.
 
 ---
 
 ## Prerequisites
 
-- Docker installed on the host
+**Common**
+
 - Furiosa NPUs physically installed and visible to the OS
 - A [Hugging Face access token](https://huggingface.co/settings/tokens) with access to the following models:
   - [`meta-llama/Llama-3.1-8B-Instruct`](https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct)
 
 > If you haven't accepted the terms of use for these models, visit each model page on Hugging Face and agree before proceeding.
 
----
+**Docker only**
 
-## Quick Start
-
-```bash
-# 1. Export your Hugging Face token
-export HF_TOKEN=your_huggingface_token
-
-# 2. Build the image
-docker build --progress=plain --build-arg HF_TOKEN=$HF_TOKEN -t furiosa-validation-tool-online:26.1.0 .
-
-# 3. Run all tests
-docker run --rm -it --privileged \
-  -v /sys/kernel/debug:/sys/kernel/debug \
-  -v /lib/modules:/lib/modules:ro \
-  -v $(pwd)/outputs:/root/outputs \
-  -v $(pwd)/logs:/root/logs \
-  furiosa-validation-tool-online:26.1.0
-```
-
-Results are saved under `./outputs/` and `./logs/` on the host.
+- Docker installed on the host
 
 ---
 
@@ -49,7 +32,33 @@ Control which tests run with the `RUN_TESTS` environment variable (comma-separat
 
 ---
 
-## Build
+## Running Without Docker
+
+If the environment is already configured (Furiosa driver, firmware, and tools installed, and Python dependencies including `furiosa-llm==2026.1.0`, `pillow`, `urllib3<2`, and `more-itertools<11.0` available), run the validation tool directly using `entrypoint.sh`.
+
+```bash
+# Export your Hugging Face token
+export HF_TOKEN=your_huggingface_token
+
+# Run all tests
+sudo HF_TOKEN=$HF_TOKEN bash entrypoint.sh
+
+# Run a subset of tests
+sudo HF_TOKEN=$HF_TOKEN RUN_TESTS=stress bash entrypoint.sh
+
+# Diagnostics + stress (skip P2P)
+sudo HF_TOKEN=$HF_TOKEN RUN_TESTS=diag,stress bash entrypoint.sh
+```
+
+Results are saved under `./outputs/` and `./logs/` (or the paths set by `OUTPUT_DIR` / `LOG_DIR`).
+
+> `sudo` is required for hardware access. `HF_TOKEN` must be passed explicitly because `sudo` does not inherit the parent shell's environment by default.
+
+---
+
+## Running With Docker
+
+### Build
 
 ```bash
 export HF_TOKEN=your_huggingface_token
@@ -57,11 +66,10 @@ export HF_TOKEN=your_huggingface_token
 docker build --progress=plain --build-arg HF_TOKEN=$HF_TOKEN -t furiosa-validation-tool-online:[version] .
 ```
 
----
-
-## Run
+### Run
 
 ```bash
+# Run all tests
 docker run --rm -it --privileged \
   -v /sys/kernel/debug:/sys/kernel/debug \
   -v /lib/modules:/lib/modules:ro \
@@ -69,17 +77,15 @@ docker run --rm -it --privileged \
   -v $(pwd)/logs:/root/logs \
   -e RUN_TESTS=diag,p2p,stress \
   furiosa-validation-tool-online:[version]
-```
 
-**Run a subset of tests:**
-
-```bash
-# Diagnostics only
-docker run ... -e RUN_TESTS=diag furiosa-validation-tool-online:[version]
+# Stress only
+docker run ... -e RUN_TESTS=stress furiosa-validation-tool-online:[version]
 
 # Diagnostics + stress (skip P2P)
 docker run ... -e RUN_TESTS=diag,stress furiosa-validation-tool-online:[version]
 ```
+
+Results are saved under `./outputs/` and `./logs/` on the host.
 
 ---
 
