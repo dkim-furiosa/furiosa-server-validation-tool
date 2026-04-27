@@ -1,18 +1,17 @@
 #!/bin/bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/common.sh
+source "$SCRIPT_DIR/lib/common.sh"
+# shellcheck source=lib/html.sh
+source "$SCRIPT_DIR/lib/html.sh"
+
 OUTPUT_STRESS=${OUTPUT_STRESS:-$OUTPUT_DIR/stress_$TIMESTAMP}
 LOG_STRESS=${LOG_STRESS:-$LOG_DIR/stress_$TIMESTAMP}
 mkdir -p "$OUTPUT_STRESS" "$LOG_STRESS"
 
 export PATH="$HOME/.local/bin:$PATH"
-
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-CYAN='\033[0;36m'
-BOLD='\033[1m'
-NC='\033[0m'
 
 if [ ! -d "vllm" ]; then
   git clone https://github.com/furiosa-ai/vllm.git -b add_power_monitor
@@ -21,48 +20,9 @@ if [ ! -f "ShareGPT_V3_unfiltered_cleaned_split.json" ]; then
   wget https://huggingface.co/datasets/anon8231489123/ShareGPT_Vicuna_unfiltered/resolve/main/ShareGPT_V3_unfiltered_cleaned_split.json
 fi
 
-cat <<EOF > temp_sensor_monitor.py
-import os, time, csv, sys
-from datetime import datetime
-
-def monitor():
-    base_path = "/sys/kernel/debug/rngd/mgmt"
-    sensor_file = "/sensor_readings"
-    valid_npus = [i for i in range(8) if os.path.exists(f"{base_path}{i}{sensor_file}")]
-    if not valid_npus: sys.exit(1)
-
-    log_file = os.path.join("$OUTPUT_STRESS", f"sensor_log_$TIMESTAMP.csv")
-    with open(log_file, "w", newline="") as f:
-        writer = csv.writer(f)
-        header = ["timestamp"]
-        for n in valid_npus:
-            header += [f"npu{n}_soc_temp", f"npu{n}_hbm0_temp", f"npu{n}_hbm1_temp", f"npu{n}_power"]
-        writer.writerow(header)
-
-        while True:
-            row = [datetime.now().strftime("%Y-%m-%d %H:%M:%S")]
-            for n in valid_npus:
-                try:
-                    with open(f"{base_path}{n}{sensor_file}", "r") as sp:
-                        data = sp.read().strip().replace(",", " ").split()
-                        if len(data) >= 5:
-                            # data[1]: SoC, data[2]: HBM0, data[3]: HBM1, data[4]: Power
-                            row += [data[1], data[2], data[3], data[4]]
-                        else:
-                            row += ["", "", "", ""]
-                except:
-                    row += ["", "", "", ""]
-            writer.writerow(row)
-            f.flush()
-            time.sleep(1)
-
-if __name__ == "__main__":
-    monitor()
-EOF
-
 declare -a SUMMARY_DATA=()
 
-NPU_COUNT=$(ls -d /sys/kernel/debug/rngd/mgmt* 2>/dev/null | wc -l)
+NPU_COUNT=$(detect_npu_count)
 [ "$NPU_COUNT" -eq 0 ] && { echo "Error: No NPUs detected"; exit 1; }
 echo "Detected $NPU_COUNT NPU(s)"
 
@@ -202,11 +162,10 @@ cleanup() {
         kill "$MONITOR_PID" 2>/dev/null || true
         wait "$MONITOR_PID" 2>/dev/null || true
     fi
-    rm -f temp_sensor_monitor.py
 }
 trap cleanup EXIT INT TERM
 
-python3 temp_sensor_monitor.py &
+python3 "$SCRIPT_DIR/lib/sensor_monitor.py" --output "$OUTPUT_STRESS" --timestamp "$TIMESTAMP" &
 MONITOR_PID=$!
 echo -e "${CYAN}NPU Sensor Monitoring started (PID: $MONITOR_PID)${NC}"
 
@@ -283,7 +242,7 @@ for model in "${MODELS[@]}"; do
   stop_serving "${serve_pids[@]}"
 done
 
-sudo dmesg > "${OUTPUT_STRESS}/dmesg_$TIMESTAMP.log"
+capture_dmesg "$OUTPUT_STRESS"
 
 SUMMARY_LOG="${OUTPUT_STRESS}/PF_result.log"
 HTML_REPORT="${OUTPUT_STRESS}/PF_result.html"
@@ -309,56 +268,38 @@ done
   fi
 } | tee "$SUMMARY_LOG"
 
+html_init "$HTML_REPORT" "Furiosa Stress Test Summary"
+
 {
-  cat <<EOF
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="utf-8">
-    <title>Stress Test Report</title>
-    <style>
-        body { font-family: sans-serif; margin: 30px; background-color: #f4f7f6; }
-        h1 { color: #2c3e50; }
-        table { width: 100%; border-collapse: collapse; background: white; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
-        th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
-        th { background-color: #34495e; color: white; }
-        tr:nth-child(even) { background-color: #f9f9f9; }
-        .pass { color: #27ae60; font-weight: bold; }
-        .fail { color: #e74c3c; font-weight: bold; }
-        .footer { margin-top: 20px; font-weight: bold; font-size: 1.2em; }
-    </style>
-</head>
-<body>
-    <h1>Furiosa Stress Test Summary</h1>
-    <p><strong>Generated:</strong> $(date)</p>
-    <table>
-        <thead>
-            <tr>
-                <th>Model</th>
-                <th>NPU</th>
-                <th>Test</th>
-                <th>Status</th>
-            </tr>
-        </thead>
-        <tbody>
-EOF
+    echo '    <table>'
+    echo '        <thead>'
+    echo '            <tr>'
+    echo '                <th>Model</th>'
+    echo '                <th>NPU</th>'
+    echo '                <th>Test</th>'
+    echo '                <th>Status</th>'
+    echo '            </tr>'
+    echo '        </thead>'
+    echo '        <tbody>'
 
-  for row in "${SUMMARY_DATA[@]}"; do
-    IFS='|' read -r m n test s <<<"$row"
-    status_class=$( [ "$s" = "PASS" ] && echo "pass" || echo "fail" )
-    echo "            <tr><td>$m</td><td>$n</td><td>$test</td><td class=\"$status_class\">$s</td></tr>"
-  done
+    for row in "${SUMMARY_DATA[@]}"; do
+        IFS='|' read -r m n test s <<<"$row"
+        status_class=$( [ "$s" = "PASS" ] && echo "pass" || echo "fail" )
+        echo "            <tr><td>$m</td><td>$n</td><td>$test</td><td class=\"$status_class\">$s</td></tr>"
+    done
 
-  cat <<EOF
-        </tbody>
-    </table>
-    <div class="footer">
-        $( [ $FAILED -eq 1 ] && echo "<span class='fail'>RESULT: Some tests FAILED</span>" || echo "<span class='pass'>RESULT: All tests PASSED</span>" )
-    </div>
-</body>
-</html>
-EOF
-} > "$HTML_REPORT"
+    echo '        </tbody>'
+    echo '    </table>'
+    echo '    <div class="footer">'
+    if [ $FAILED -eq 1 ]; then
+        echo "        <span class='fail'>RESULT: Some tests FAILED</span>"
+    else
+        echo "        <span class='pass'>RESULT: All tests PASSED</span>"
+    fi
+    echo '    </div>'
+} >> "$HTML_REPORT"
+
+html_close "$HTML_REPORT"
 
 echo -e "HTML report saved to: ${YELLOW}$HTML_REPORT${NC}"
 

@@ -1,21 +1,54 @@
 #!/bin/bash
+# Unified ACS (Access Control Services) walker for Broadcom PCIe switches.
+# Walks from each Furiosa endpoint up through Broadcom switches and writes
+# the ACSCtl register for every switch port that exposes the ACS capability.
+#
+# Usage: acs.sh --mode {enable|disable} [-d]
+
 set -euo pipefail
 
-[ "$EUID" -eq 0 ] || { echo "ERROR: ACS_enable.sh must be run as root"; exit 1; }
+[[ "$EUID" -eq 0 ]] || {
+  echo "ERROR: acs.sh must be run as root"
+  exit 1
+}
 
 DEBUG=0
-while getopts ":d" opt; do
-  case "$opt" in
-    d) DEBUG=1 ;;
+MODE=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -d)
+      DEBUG=1
+      shift
+      ;;
+    --mode)
+      MODE="$2"
+      shift 2
+      ;;
+    -h | --help)
+      echo "Usage: $0 --mode {enable|disable} [-d]"
+      exit 0
+      ;;
+    *)
+      echo "ERROR: unknown argument: $1" >&2
+      exit 1
+      ;;
   esac
 done
-shift $((OPTIND-1))
+
+case "$MODE" in
+  # Source Validation | P2P Request/Completion Redirect | Upstream Forwarding
+  enable) ACS_VALUE="001f" ;;
+  disable) ACS_VALUE="0000" ;;
+  *)
+    echo "ERROR: --mode {enable|disable} required" >&2
+    exit 1
+    ;;
+esac
 
 has_acs_cap() {
   local bdf="$1"
   local out
   out="$(lspci -nn -vvv -s "${bdf#0000:}" 2>/dev/null || true)"
-
   if [[ "$DEBUG" -eq 1 ]]; then
     echo "----- [DBG] lspci -nn -vvv -s ${bdf#0000:} -----" >&2
     echo "$out" >&2
@@ -23,7 +56,6 @@ has_acs_cap() {
     echo "$out" | grep -niE "Access Control Services|ACSCap:|ACSCtl:" >&2 || true
     echo "----------------------------------" >&2
   fi
-
   echo "$out" | grep -qiE "Access Control Services|ACSCap:|ACSCtl:"
 }
 
@@ -39,19 +71,21 @@ get_parent_bdf() {
   basename "$(readlink -f "$dev/..")"
 }
 
-set_acs_ctl_enable() {
+apply_acs_value() {
   local bdf="$1"
   local cur
   cur="$(setpci -s "${bdf#0000:}" ECAP_ACS+0x6.W 2>/dev/null || true)"
   [[ -n "$cur" ]] || return 0
-  local enable_val="001f"  # Source Validation | P2P Request/Completion Redirect | Upstream Forwarding
-  echo "  Enable ACSCtl: ${bdf#0000:} (0x$cur -> 0x$enable_val)"
-  setpci -s "${bdf#0000:}" ECAP_ACS+0x6.W=0x$enable_val
+  echo "  Apply ACSCtl: ${bdf#0000:}  (0x$cur -> 0x$ACS_VALUE)"
+  setpci -s "${bdf#0000:}" ECAP_ACS+0x6.W=0x$ACS_VALUE
 }
 
 mapfile -t ep_bdfs < <(lspci -D | awk '/Furi/{print $1}' | sort -u)
 
-[ "${#ep_bdfs[@]}" -gt 0 ] || { echo "ERROR: No Furiosa PCI devices found"; exit 1; }
+[[ "${#ep_bdfs[@]}" -gt 0 ]] || {
+  echo "ERROR: No Furiosa PCI devices found"
+  exit 1
+}
 
 declare -A visited=()
 
@@ -76,7 +110,7 @@ for ep in "${ep_bdfs[@]}"; do
     fi
 
     if has_acs_cap "$parent"; then
-      set_acs_ctl_enable "$parent"
+      apply_acs_value "$parent"
     else
       echo "  Broadcom port without ACS capability: ${parent#0000:}"
     fi
@@ -87,4 +121,4 @@ for ep in "${ep_bdfs[@]}"; do
   echo
 done
 
-echo "ACS enable sequence completed successfully"
+echo "ACS $MODE sequence completed successfully"

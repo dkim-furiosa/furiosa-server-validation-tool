@@ -1,41 +1,16 @@
 #!/bin/bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/common.sh
+source "$SCRIPT_DIR/lib/common.sh"
+# shellcheck source=lib/html.sh
+source "$SCRIPT_DIR/lib/html.sh"
+
 OUTPUT_P2P=${OUTPUT_P2P:-$OUTPUT_DIR/p2p_$TIMESTAMP}
 mkdir -p "$OUTPUT_P2P"
 LOG_FILE="${OUTPUT_P2P}/PF_result.log"
 HTML_FILE="${OUTPUT_P2P}/PF_result.html"
-
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-CYAN='\033[0;36m'
-BLUE='\033[0;34m'
-BOLD='\033[1m'
-NC='\033[0m'
-
-init_html() {
-    cat <<EOF > "$HTML_FILE"
-<html>
-<head>
-    <meta charset="utf-8">
-    <style>
-        body { font-family: sans-serif; margin: 30px; background-color: #f4f7f6; }
-        h1, h2 { color: #2c3e50; }
-        .section { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 30px; }
-        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-        th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
-        th { background-color: #34495e; color: white; }
-        tr:nth-child(even) { background-color: #f9f9f9; }
-        .val-text { color: #27ae60; font-weight: bold; }
-        .status-warn { color: #f39c12; font-weight: bold; }
-    </style>
-</head>
-<body>
-    <h1>Furiosa P2P Benchmark Report</h1>
-    <p><strong>Generated:</strong> $(date)</p>
-EOF
-}
 
 append_html_section() {
     local label=$1
@@ -61,7 +36,7 @@ EOF
     echo "</table></div>" >> "$HTML_FILE"
 }
 
-NPU_COUNT=$(find /sys/kernel/debug/rngd/ -maxdepth 1 -name "mgmt*" 2>/dev/null | wc -l)
+NPU_COUNT=$(detect_npu_count)
 [ "$NPU_COUNT" -eq 0 ] && { echo -e "${RED}Error: No NPUs found${NC}"; exit 1; }
 
 save_lspci_info() {
@@ -135,7 +110,7 @@ run_p2p_benchmark() {
     append_html_section "$label" "${SUMMARY_DATA[@]}"
 }
 
-init_html
+html_init "$HTML_FILE" "Furiosa P2P Benchmark Report"
 
 echo -e "${BOLD}All results will be saved in: ${YELLOW}$OUTPUT_P2P${NC}" | tee -a "$LOG_FILE"
 
@@ -143,13 +118,13 @@ ACS_DISABLED=0
 restore_acs() {
     if [ "$ACS_DISABLED" = "1" ]; then
         echo -e "\n${YELLOW}[cleanup] Restoring ACS to enabled state...${NC}" | tee -a "$LOG_FILE" || true
-        bash "ACS_enable.sh" 2>&1 | tee -a "$LOG_FILE" || true
+        bash "$SCRIPT_DIR/lib/acs.sh" --mode enable 2>&1 | tee -a "$LOG_FILE" || true
     fi
 }
 trap restore_acs EXIT INT TERM
 
 echo -e "\n${BOLD}[STEP 1] ACS Disable Sequence${NC}" | tee -a "$LOG_FILE"
-bash "ACS_disable.sh" 2>&1 | tee -a "$LOG_FILE"
+bash "$SCRIPT_DIR/lib/acs.sh" --mode disable 2>&1 | tee -a "$LOG_FILE"
 ACS_DISABLED=1
 save_lspci_info "ACS_Disabled"
 run_p2p_benchmark "after ACS disable"
@@ -157,14 +132,14 @@ run_p2p_benchmark "after ACS disable"
 echo >> "$LOG_FILE"
 
 echo -e "\n${BOLD}[STEP 2] ACS Enable Sequence${NC}" | tee -a "$LOG_FILE"
-bash "ACS_enable.sh" 2>&1 | tee -a "$LOG_FILE"
+bash "$SCRIPT_DIR/lib/acs.sh" --mode enable 2>&1 | tee -a "$LOG_FILE"
 ACS_DISABLED=0
 save_lspci_info "ACS_Enabled"
 run_p2p_benchmark "after ACS enable"
 
-echo "</body></html>" >> "$HTML_FILE"
+html_close "$HTML_FILE"
 
-sudo dmesg > "${OUTPUT_P2P}/dmesg_$TIMESTAMP.log"
+capture_dmesg "$OUTPUT_P2P"
 
 echo -e "\n${GREEN}${BOLD}==========================================================================${NC}"
 echo -e "${GREEN}${BOLD}  Test Completed Successfully!${NC}"
