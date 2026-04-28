@@ -28,18 +28,30 @@ should_run_test() {
     return 1
 }
 
+run_phase() {
+    local phase="$1"
+    local script="$2"
+    local rc=0
+    "./$script" || rc=$?
+    mkdir -p "$RUN_DIR/$phase"
+    echo "$rc" > "$RUN_DIR/$phase/exit_code.txt"
+}
+
 if should_run_test "diag"; then
-    ./run_diag.sh
+    run_phase "diag" "run_diag.sh"
 fi
 
 if should_run_test "p2p"; then
-    ./run_p2p.sh
+    run_phase "p2p" "run_p2p.sh"
 fi
 
 if should_run_test "stress"; then
-    ./run_stress.sh
+    run_phase "stress" "run_stress.sh"
 fi
+
+python3 "$VALIDATION_DIR/scripts/tools/generate_index.py" --run-dir "$RUN_DIR"
 
 echo "=============================================="
 echo " All selected tests completed"
+echo " Run report: $RUN_DIR/index.html"
 echo "=============================================="
