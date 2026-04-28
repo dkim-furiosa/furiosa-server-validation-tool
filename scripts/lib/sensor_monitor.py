@@ -7,7 +7,7 @@ import sys
 from datetime import datetime
 
 
-def monitor(output_dir, timestamp):
+def monitor(output_dir, timestamp, interval):
     base_path = "/sys/kernel/debug/rngd/mgmt"
     sensor_file = "/sensor_readings"
     valid_npus = [i for i in range(8) if os.path.exists(f"{base_path}{i}{sensor_file}")]
@@ -36,12 +36,13 @@ def monitor(output_dir, timestamp):
                     row += ["", "", "", ""]
             writer.writerow(row)
             f.flush()
-            time.sleep(1)
+            time.sleep(interval)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", required=True)
     parser.add_argument("--timestamp", required=True)
+    parser.add_argument("--interval", type=float, default=1.0)
     args = parser.parse_args()
-    monitor(args.output, args.timestamp)
+    monitor(args.output, args.timestamp, args.interval)

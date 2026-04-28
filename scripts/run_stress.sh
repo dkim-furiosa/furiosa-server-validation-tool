@@ -6,6 +6,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib/common.sh"
 # shellcheck source=lib/html.sh
 source "$SCRIPT_DIR/lib/html.sh"
+# shellcheck source=config.env
+source "$SCRIPT_DIR/config.env"
 
 OUTPUT_STRESS=${OUTPUT_STRESS:-$OUTPUT_DIR/stress_$TIMESTAMP}
 LOG_STRESS=${LOG_STRESS:-$LOG_DIR/stress_$TIMESTAMP}
@@ -26,12 +28,7 @@ NPU_COUNT=$(detect_npu_count)
 [ "$NPU_COUNT" -eq 0 ] && { echo "Error: No NPUs detected"; exit 1; }
 echo "Detected $NPU_COUNT NPU(s)"
 
-BASE_PORT=8000
-
-MODELS=(
-  "Llama-3.1-8B-Instruct meta-llama"
-  "Qwen2.5-0.5B-Instruct Qwen"
-)
+IFS=',' read -ra MODELS <<< "$STRESS_MODELS"
 
 get_model_id() {
   local port=$1
@@ -41,7 +38,8 @@ get_model_id() {
 
 check_models_up() {
   local ports=("$@")
-  local max_attempts=30
+  local max_attempts="$SERVE_READY_MAX_ATTEMPTS"
+  local interval="$SERVE_READY_INTERVAL"
   local attempt=1
 
   echo "Checking if all models are up on ports: ${ports[*]}"
@@ -61,8 +59,8 @@ check_models_up() {
     [ "$all_up" = true ] && { echo "All models are up!"; return 0; }
 
     if [ $attempt -lt $max_attempts ]; then
-      echo -e "${YELLOW}Attempt $attempt/$max_attempts: Not all models are up, waiting 60 seconds...${NC}"
-      sleep 60
+      echo -e "${YELLOW}Attempt $attempt/$max_attempts: Not all models are up, waiting ${interval} seconds...${NC}"
+      sleep "$interval"
     fi
     attempt=$((attempt + 1))
   done
@@ -93,17 +91,11 @@ run_fixed_benchmark() {
 
   [ -n "$PRETRAINED_ID" ] || { echo "Error: could not fetch model id (port=$port)"; return 1; }
 
-  local triples=(
-    "1024 1024 128"
-    "2048 1024 64"
-    "4096 1024 32"
-    "6144 1024 16"
-    "12288 1024 8"
-    "31744 1024 1"
-  )
+  local triples
+  IFS=',' read -ra triples <<< "$STRESS_FIXED_TRIPLES"
 
   for triple in "${triples[@]}"; do
-    read -r in_len out_len conc <<< "$triple"
+    IFS=':' read -r in_len out_len conc <<< "$triple"
     echo "Fixed benchmark: in=$in_len out=$out_len conc=$conc"
 
     python3 vllm/benchmarks/benchmark_serving.py \
@@ -165,13 +157,13 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-python3 "$SCRIPT_DIR/lib/sensor_monitor.py" --output "$OUTPUT_STRESS" --timestamp "$TIMESTAMP" &
+python3 "$SCRIPT_DIR/lib/sensor_monitor.py" --output "$OUTPUT_STRESS" --timestamp "$TIMESTAMP" --interval "$SENSOR_POLL_INTERVAL" &
 MONITOR_PID=$!
 echo -e "${CYAN}NPU Sensor Monitoring started (PID: $MONITOR_PID)${NC}"
 
-for model in "${MODELS[@]}"; do
-  model_name=$(echo "$model" | cut -d' ' -f1)
-  model_org=$(echo "$model" | cut -d' ' -f2)
+for model_entry in "${MODELS[@]}"; do
+  IFS=':' read -r model_name model_org <<< "$model_entry"
+  model="$model_name $model_org"
   echo "=========================================="
   echo "Processing model: $model"
   echo "=========================================="
@@ -180,7 +172,7 @@ for model in "${MODELS[@]}"; do
   serve_ports=()
 
   for ((npu=0; npu<NPU_COUNT; npu++)); do
-    port=$((BASE_PORT + npu))
+    port=$((STRESS_BASE_PORT + npu))
     mkdir -p "$LOG_STRESS/${model}/npu${npu}"
     echo "Starting $model on NPU $npu (port $port)"
 
@@ -189,7 +181,7 @@ for model in "${MODELS[@]}"; do
     PYTHONUNBUFFERED=1 furiosa-llm serve "$furiosa_model_name" \
       --devices "npu:$npu" \
       --port "$port" \
-      --revision v2026.1 \
+      --revision "$STRESS_REVISION" \
       --served-model-name "$served_model_name" \
       >"$LOG_STRESS/${model}/npu${npu}/serve.log" 2>&1 &
 
