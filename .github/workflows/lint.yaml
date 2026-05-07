@@ -20,13 +20,15 @@ jobs:
           python-version: '3.10'
       # shfmt is a shell formatter.
       - name: Install shfmt
+        env:
+          SHFMT_VERSION: v3.13.1
         # yamllint disable rule:line-length
         run: |
           # --fail makes curl exit non-zero on 4xx, so a bad URL fails
           # here rather than letting `install` write an HTML error page
           # to /usr/local/bin/shfmt and tripping shfmt only at lint time.
           curl --fail --silent --show-error --location \
-            https://github.com/mvdan/sh/releases/download/v3.13.1/shfmt_v3.13.1_linux_amd64 \
+            "https://github.com/mvdan/sh/releases/download/${SHFMT_VERSION}/shfmt_${SHFMT_VERSION}_linux_amd64" \
             -o /tmp/shfmt
           sudo install -m 755 /tmp/shfmt /usr/local/bin/shfmt
         # yamllint enable rule:line-length
@@ -58,12 +60,14 @@ jobs:
           python-version: '3.10'
       # dockerfmt is a Dockerfile formatter.
       - name: Install dockerfmt
+        env:
+          DOCKERFMT_VERSION: v0.5.2
         # yamllint disable rule:line-length
         run: |
           # --fail makes curl exit non-zero on 4xx, so a bad URL
           # surfaces as a curl error rather than tar's "not in gzip".
           curl --fail --silent --show-error --location \
-            https://github.com/reteps/dockerfmt/releases/download/v0.5.2/dockerfmt-v0.5.2-linux-amd64.tar.gz \
+            "https://github.com/reteps/dockerfmt/releases/download/${DOCKERFMT_VERSION}/dockerfmt-${DOCKERFMT_VERSION}-linux-amd64.tar.gz" \
             | sudo tar xz -C /usr/local/bin/ dockerfmt
         # yamllint enable rule:line-length
       # hadolint is a static linter for Dockerfiles.
