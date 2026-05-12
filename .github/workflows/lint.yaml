@@ -87,3 +87,18 @@ jobs:
       - name: Install lint tools
         run: pip install google-yamlfmt yamllint
       - run: make lint-yaml
+
+  actions:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.10'
+      - name: Install actionlint
+        # Include shellcheck-py so actionlint auto-discovers it and lints
+        # the bash inside `run:` blocks.
+        run: pip install actionlint-py shellcheck-py
+      - run: make lint-actions

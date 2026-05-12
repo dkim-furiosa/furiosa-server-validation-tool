@@ -30,7 +30,7 @@ run:
 
 # Run all linters.
 .PHONY: lint
-lint: lint-sh lint-py lint-docker lint-yaml
+lint: lint-sh lint-py lint-docker lint-yaml lint-actions
 
 # Lint shell scripts.
 .PHONY: lint-sh
@@ -64,6 +64,11 @@ lint-docker:
 lint-yaml:
 	yamlfmt -lint .github/
 	yamllint --strict .github/
+
+# Lint GitHub Actions workflows.
+.PHONY: lint-actions
+lint-actions:
+	actionlint -color
 
 # Run the test suite.
 .PHONY: test
