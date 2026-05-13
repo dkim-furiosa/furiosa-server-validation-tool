@@ -6,10 +6,6 @@ echo " Furiosa RNGD Validator Started (Online Mode)"
 echo "=============================================="
 
 export HOME=${HOME:-/root}
-if [[ -z "$HF_TOKEN" ]]; then
-  echo "ERROR: HF_TOKEN is not set. Please set HF_TOKEN before running this script."
-  exit 1
-fi
 export HF_TOKEN=$HF_TOKEN
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export VALIDATOR_DIR=${VALIDATOR_DIR:-$SCRIPT_DIR}
@@ -29,6 +25,12 @@ should_run_test() {
   done
   return 1
 }
+
+# HF_TOKEN is required only for the stress phase (model downloads).
+if should_run_test "stress" && [[ -z "$HF_TOKEN" ]]; then
+  echo "ERROR: HF_TOKEN is required for the 'stress' phase but is not set."
+  exit 1
+fi
 
 run_phase() {
   local phase="$1"
