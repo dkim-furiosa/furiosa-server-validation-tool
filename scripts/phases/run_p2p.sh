@@ -1,4 +1,11 @@
 #!/bin/bash
+# P2P bandwidth benchmark phase.
+# Runs `furiosa-hal-bench p2p` between every NPU pair twice -- once with
+# ACS disabled on the upstream Broadcom switches, once with ACS
+# re-enabled -- so the two sets of numbers can be compared. The
+# EXIT/INT/TERM trap always restores ACS, so an aborted run never leaves
+# the host with ACS disabled.
+
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -120,18 +127,14 @@ html_init "$HTML_FILE" "Furiosa P2P Benchmark Report"
 
 echo -e "${BOLD}All results will be saved in: ${YELLOW}$OUTPUT_P2P${NC}" | tee -a "$LOG_FILE"
 
-ACS_DISABLED=0
 restore_acs() {
-  if [[ "$ACS_DISABLED" = "1" ]]; then
-    echo -e "\n${YELLOW}[cleanup] Restoring ACS to enabled state...${NC}" | tee -a "$LOG_FILE" || true
-    bash "$SCRIPTS_ROOT/lib/acs.sh" --mode enable 2>&1 | tee -a "$LOG_FILE" || true
-  fi
+  echo -e "\n${YELLOW}[cleanup] Restoring ACS to enabled state...${NC}" | tee -a "$LOG_FILE" || true
+  bash "$SCRIPTS_ROOT/lib/acs.sh" --mode enable 2>&1 | tee -a "$LOG_FILE" || true
 }
 trap restore_acs EXIT INT TERM
 
 echo -e "\n${BOLD}[STEP 1] ACS Disable Sequence${NC}" | tee -a "$LOG_FILE"
 bash "$SCRIPTS_ROOT/lib/acs.sh" --mode disable 2>&1 | tee -a "$LOG_FILE"
-ACS_DISABLED=1
 save_lspci_info "ACS_Disabled"
 run_p2p_benchmark "after ACS disable"
 
@@ -139,7 +142,6 @@ echo >>"$LOG_FILE"
 
 echo -e "\n${BOLD}[STEP 2] ACS Enable Sequence${NC}" | tee -a "$LOG_FILE"
 bash "$SCRIPTS_ROOT/lib/acs.sh" --mode enable 2>&1 | tee -a "$LOG_FILE"
-ACS_DISABLED=0
 save_lspci_info "ACS_Enabled"
 run_p2p_benchmark "after ACS enable"
 
