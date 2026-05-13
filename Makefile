@@ -16,10 +16,14 @@ SHELL_SCRIPTS := \
 build:
 	docker build --progress=plain -t $(IMAGE) .
 
-# Run the container with privileged + debugfs mounts. Requires HF_TOKEN.
+# Run the container with privileged + debugfs mounts. HF_TOKEN required when
+# RUN_TESTS includes stress.
 .PHONY: run
 run:
-	@if [ -z "$$HF_TOKEN" ]; then echo "ERROR: HF_TOKEN not set"; exit 1; fi
+	@if echo "$(RUN_TESTS)" | grep -wq stress && [ -z "$$HF_TOKEN" ]; then \
+	    echo "ERROR: HF_TOKEN is required for the 'stress' phase but is not set"; \
+	    exit 1; \
+	fi
 	docker run --rm -it --privileged \
 	    -v /sys/kernel/debug:/sys/kernel/debug \
 	    -v /lib/modules:/lib/modules:ro \
